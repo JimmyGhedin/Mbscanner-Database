@@ -86,6 +86,8 @@ Une ligne par modèle reconnu. C'est la table centrale : les autres y font réf�
 | `name` | texte | oui | Désignation lisible (ex. `PM8240`). Affichée dans la colonne Équipement du certificat |
 | `brand` | texte | oui | Marque. Doit être **écrite exactement** comme dans `brand_probe.brand` (ex. `Schneider Electric`), sinon les signatures du modèle ne seront essayées qu'en dernier recours. Pour les compteurs indirects, elle choisit aussi la table de traduction des systèmes de mesure |
 | `product_code` | texte | non | Code renvoyé en 43/0E (objet `0x01`), **uniquement s'il diffère de `reference`**. Ex. `reference = METSEPM5560`, l'appareil répond `PM5560` → `product_code = PM5560`. Laisser vide si le code est égal à la référence |
+| `undirect_model_id` | entier | non | Pour les compteurs à mesure indirecte : `id` de l'équipement « modèle » dont on reprend les lignes `undirect_meters`. Les références d'une même famille partagent la même table d'échanges : on déclare les lectures une seule fois sur le modèle, et les autres références pointent vers lui. Ex. PM8240 → `222` (PM8000). Laisser vide pour le modèle lui-même et pour les autres équipements. Quand cette colonne est renseignée, les lignes `undirect_meters` propres à l'équipement sont ignorées |
+| `serial_model_id` | entier | non | Même principe pour le numéro de série : `id` de l'équipement dont on reprend la ligne `equipment_serial`. Laisser vide pour le modèle lui-même et pour les équipements sans numéro de série lisible. Quand cette colonne est renseignée, la ligne `equipment_serial` propre à l'équipement est ignorée |
 
 Un message `answers 43/0E with unknown product code 'XXX'` dans les journaux indique qu'il suffit de renseigner
 `XXX` dans `product_code` (ou `reference`) de l'équipement concerné.
@@ -141,10 +143,12 @@ Exemple : Micrologic 5.2 E, identifié en deux conditions :
 Un équipement Schneider dont le code 43/0E est égal à sa référence (ou à son `product_code`) n'a besoin
 d'**aucune** signature.
 
-### `equipment_serial` : emplacement du numéro de série
+### `equipment_serial` : numéro de série et autres identifiants
 
-Facultatif, au plus une ligne par équipement. Si l'emplacement est déclaré, le numéro de série est lu après
-l'identification et imprimé sous le modèle sur le certificat. Une lecture qui échoue n'empêche pas le test.
+Facultatif. Une ligne par identifiant à lire : numéro de série, RF-Id d'un PowerTag… Après l'identification, chaque
+identifiant est lu puis imprimé sous le modèle sur le certificat, une ligne par identifiant, dans l'ordre des `id`.
+Une lecture qui échoue, ou une valeur non disponible, n'empêche pas le test : la ligne est simplement omise.
+Les références d'une même famille peuvent partager une seule ligne via `equipment.serial_model_id`.
 
 | Colonne | Type | Description |
 |---|---|---|
@@ -152,13 +156,21 @@ l'identification et imprimé sous le modèle sur le certificat. Une lecture qui 
 | `equipment_id` | entier | Équipement concerné |
 | `address` | entier | Premier registre (fonction 03, adresse 0-based) |
 | `length` | entier | Nombre de registres à lire |
-| `encoding` | texte | `string` : 2 caractères ASCII par registre, octet de poids fort d'abord. `low_byte` : 1 caractère par registre, dans l'octet de poids faible (ex. Carlo Gavazzi EM111) |
+| `encoding` | texte | `string` : 2 caractères ASCII par registre, octet de poids fort d'abord. `low_byte` : 1 caractère par registre, dans l'octet de poids faible (ex. Carlo Gavazzi EM111). `uint32` : entier non signé sur 2 registres, mot de poids fort d'abord, imprimé en décimal (mettre `length = 2`). `hex` : entier imprimé en hexadécimal au format `0xE2042568` (poids fort d'abord, sans zéros de tête ; ex. RF-Id UINT64 : `length = 4`). La valeur Schneider « non disponible » (`0x8000…0`) n'est pas imprimée |
+| `label` | texte | Libellé imprimé devant la valeur (ex. `RF-Id`). Vide = `N° de série` |
+
+Exemple, PowerTag 1522 (les autres PowerTags y sont rattachés par `serial_model_id`) :
+
+| equipment_id | address | length | encoding | label |
+|---|---|---|---|---|
+| 38 | 31088 | 10 | string | |
+| 38 | 31026 | 4 | hex | RF-Id |
 
 ### `undirect_meters` : compteurs à mesure indirecte (TC)
 
 Lectures des réglages des transformateurs de courant, imprimés dans la section « Compteurs à mesure indirecte »
-du certificat. Un équipement présent dans cette table est considéré comme un compteur indirect. Il faut **une ligne
-par valeur** à lire.
+du certificat. Un équipement présent dans cette table, ou rattaché par `equipment.undirect_model_id` à un équipement
+qui y est, est considéré comme un compteur indirect. Il faut **une ligne par valeur** à lire.
 
 | Colonne | Type | Description |
 |---|---|---|
@@ -180,12 +192,20 @@ par valeur** à lire.
 | `length` | Nombre de registres : `1` pour `int`, `2` pour `dint` |
 | `type` | `int` : 1 registre, valeur brute non signée. `dint` : entier signé 32 bits sur 2 registres, mot de poids fort d'abord. `string` : texte |
 | `endianness` | Utilisé seulement pour `string`. Mettre `1` |
+| `values` | Facultatif, pour `data_type = 1` uniquement : traduction des codes propre au modèle. Prioritaire sur la table de la marque. Un code absent s'affiche `N/A` |
+
+Exemple pour le système de mesure (Volts Mode) du PM8000 :
+
+```json
+{"register": 54000, "length": 1, "type": "int", "endianness": 1,
+ "values": {"0": "4W-WYE", "1": "DELTA", "2": "SINGLE", "3": "DEMO", "4": "3W-WYE"}}
+```
 
 **`data_type`** :
 
 | Valeur | Signification | Affichage sur le certificat |
 |---|---|---|
-| `1` | Système de mesure (code) | Traduit selon la marque (section `[POWER_SYSTEM]` de la configuration de l'application) |
+| `1` | Système de mesure (code) | Traduit par la clé `values` si elle existe, sinon selon la marque (section `[POWER_SYSTEM]` de la configuration de l'application) |
 | `2` | Nombre de TC | Valeur brute |
 | `3` | Rapport TC (primaire / 5) | `valeur × 5` suivi de `A/5A` |
 | `4` | Courant primaire des TC | `primaire A / secondaire A` |

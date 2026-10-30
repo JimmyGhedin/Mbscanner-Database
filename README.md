@@ -156,7 +156,7 @@ Les références d'une même famille peuvent partager une seule ligne via `equip
 | `equipment_id` | entier | Équipement concerné |
 | `address` | entier | Premier registre (fonction 03, adresse 0-based) |
 | `length` | entier | Nombre de registres à lire |
-| `encoding` | texte | `string` : 2 caractères ASCII par registre, octet de poids fort d'abord. `low_byte` : 1 caractère par registre, dans l'octet de poids faible (ex. Carlo Gavazzi EM111). `uint32` : entier non signé sur 2 registres, mot de poids fort d'abord, imprimé en décimal (mettre `length = 2`). `hex` : entier imprimé en hexadécimal au format `0xE2042568` (poids fort d'abord, sans zéros de tête ; ex. RF-Id UINT64 : `length = 4`). La valeur Schneider « non disponible » (`0x8000…0`) n'est pas imprimée |
+| `encoding` | texte | `string` : 2 caractères ASCII par registre, octet de poids fort d'abord. `low_byte` : 1 caractère par registre, dans l'octet de poids faible (ex. Carlo Gavazzi EM111). `uint32` : entier non signé sur 2 registres, mot de poids fort d'abord, imprimé en décimal (mettre `length = 2`). `hex` : entier imprimé en hexadécimal au format `0xE2042568` (poids fort d'abord, sans zéros de tête ; ex. RF-Id UINT64 : `length = 4`). La valeur Schneider « non disponible » (`0x8000…0`) n'est pas imprimée. `uint16` : entier non signé sur 1 registre, imprimé en décimal. `socomec_serial` : n° de série Socomec sur 3 registres (`address = 50008`, `length = 3`) : chaque octet de 50008 (AA, SS) et 50009 (SST, L) en décimal, puis le n° d'ordre 50010 sur 4 chiffres ; ex. `0x1814 0x1404 585` → `24202040585`. `net_id` : Net ID Socomec, U32 sur 2 registres masqué par `0x00FFFFFF` et imprimé sur 6 caractères hexadécimaux (ex. `123ABC`) ; `0xFFFFFFFF` n'est pas imprimé |
 | `label` | texte | Libellé imprimé devant la valeur (ex. `RF-Id`). Vide = `N° de série` |
 
 Exemple, PowerTag 1522 (les autres PowerTags y sont rattachés par `serial_model_id`) :
@@ -165,6 +165,13 @@ Exemple, PowerTag 1522 (les autres PowerTags y sont rattachés par `serial_model
 |---|---|---|---|---|
 | 38 | 31088 | 10 | string | |
 | 38 | 31026 | 4 | hex | RF-Id |
+
+Exemple, Socomec (DIRIS Digiware, rattachés à l'I-61 `id = 0` par `serial_model_id = 0`) :
+
+| equipment_id | address | length | encoding | label |
+|---|---|---|---|---|
+| 0 | 50008 | 3 | socomec_serial | |
+| 0 | 50067 | 2 | net_id | Net ID |
 
 ### `undirect_meters` : compteurs à mesure indirecte (TC)
 
